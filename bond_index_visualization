@@ -36,3 +36,17 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.savefig("bond_sentiment_plot_week.png")
+
+# === Plot 3: Cumulative Sentiment (Accumulator) ===
+summary['sentiment_accumulator'] = summary['pos_minus_neg'].cumsum()
+
+plt.figure(figsize=(14, 5))
+plt.plot(summary.index, summary['sentiment_accumulator'], color='purple', linewidth=2, label='Cumulative Sentiment')
+plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.title("Cumulative Bond Market Sentiment Over Time", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Cumulative Sentiment (Sum of Net Daily Sentiment)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("bond_sentiment_accumulator.png")

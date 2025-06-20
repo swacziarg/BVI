@@ -44,5 +44,5 @@ else:
 
 # Save to CSV
 df = pd.DataFrame(data)
-df.to_csv('csvs/gundlach_tweets.csv', index=False)
+df.to_csv('twitter/csvs/gundlach_tweets.csv', index=False)
 print("Done! Saved to gundlach_tweets.csv")

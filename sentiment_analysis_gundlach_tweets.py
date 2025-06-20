@@ -9,7 +9,7 @@ df['date'] = df['created_at'].dt.normalize()
 # Expanded bond-related keywords
 bond_keywords = [
     # Instruments
-    "bond", "bonds", "treasury", "treasuries", "t-bond", "t-note", "t-bill", "ust", "muni", "municipal bond",
+    "bond", "bonds", "treasury", "treasuries", "t-bond", "t-note", "t-bill", "muni", "municipal bond",
     "junk bond", "high yield", "corporate bond", "sovereign debt", "fixed income", "long bond", "short duration",
     "10-year", "2-year", "30-year", "convertible bond", "callable bond",
 

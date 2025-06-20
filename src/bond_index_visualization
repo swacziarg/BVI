@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from datetime import timedelta
 
 # Load daily sentiment summary
-summary = pd.read_csv("daily_sentiment_detail.csv", parse_dates=["date"])
+summary = pd.read_csv("csvs/daily_sentiment_detail.csv", parse_dates=["date"])
 summary.set_index("date", inplace=True)
 
 # Smooth with 7-day rolling average
@@ -19,7 +19,7 @@ plt.ylabel("Net Sentiment (Positive - Negative)")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("bond_sentiment_plot_full.png")
+plt.savefig("visualizations/bond_sentiment_plot_full.png")
 
 # === Plot 2: Past 7 Days ===
 last_date = summary.index.max()
@@ -35,7 +35,7 @@ plt.ylabel("Net Sentiment")
 plt.grid(True)
 plt.legend()
 plt.tight_layout()
-plt.savefig("bond_sentiment_plot_week.png")
+plt.savefig("visualizations/bond_sentiment_plot_week.png")
 
 # === Plot 3: Cumulative Sentiment (Accumulator) ===
 summary['sentiment_accumulator'] = summary['pos_minus_neg'].cumsum()
@@ -49,4 +49,4 @@ plt.ylabel("Cumulative Sentiment (Sum of Net Daily Sentiment)")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("bond_sentiment_accumulator.png")
+plt.savefig("visualizations/bond_sentiment_accumulator.png")

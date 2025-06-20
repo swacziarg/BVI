@@ -2,7 +2,7 @@ import pandas as pd
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # Load tweets
-df = pd.read_csv("gundlach_tweets.csv")
+df = pd.read_csv("csvs/gundlach_tweets.csv")
 df['created_at'] = pd.to_datetime(df['created_at'])
 df['date'] = df['created_at'].dt.normalize()
 
@@ -41,7 +41,7 @@ def is_bond_related(text):
 
 df['is_bond_related'] = df['text'].apply(is_bond_related)
 df_bonds = df[df['is_bond_related']].copy()
-df_bonds.to_csv("filtered_bond_tweets.csv", index=False)
+df_bonds.to_csv("csvs/filtered_bond_tweets.csv", index=False)
 
 # Initialize VADER
 analyzer = SentimentIntensityAnalyzer()
@@ -104,5 +104,5 @@ daily_counts['Δ_pos_minus_neg'] = safe_diff(daily_counts['pos_minus_neg'])
 
 # Output
 summary = daily_counts.reset_index()
-summary.to_csv("daily_sentiment_detail.csv", index=False)
+summary.to_csv("csvs/daily_sentiment_detail.csv", index=False)
 print(summary.head(10))

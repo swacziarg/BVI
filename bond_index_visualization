@@ -1,0 +1,38 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import timedelta
+
+# Load daily sentiment summary
+summary = pd.read_csv("daily_sentiment_detail.csv", parse_dates=["date"])
+summary.set_index("date", inplace=True)
+
+# Smooth with 7-day rolling average
+summary['sentiment_trend'] = summary['pos_minus_neg'].rolling(window=7, min_periods=1).mean()
+
+# === Plot 1: Full Time Series ===
+plt.figure(figsize=(14, 6))
+plt.plot(summary.index, summary['sentiment_trend'], label='Bond Sentiment (7d Avg)', linewidth=2)
+plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.title("Bond Market Sentiment Over Time", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Net Sentiment (Positive - Negative)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("bond_sentiment_plot_full.png")
+
+# === Plot 2: Past 7 Days ===
+last_date = summary.index.max()
+start_date = last_date - timedelta(days=6)
+weekly_data = summary.loc[start_date:last_date]
+
+plt.figure(figsize=(10, 4))
+plt.plot(weekly_data.index, weekly_data['pos_minus_neg'], marker='o', linestyle='-', label='Daily Net Sentiment')
+plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.title("Bond Market Sentiment – Past 7 Days", fontsize=14)
+plt.xlabel("Date")
+plt.ylabel("Net Sentiment")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.savefig("bond_sentiment_plot_week.png")

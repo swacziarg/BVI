@@ -55,9 +55,25 @@ def classify(score):
     else:
         return 'neutral'
 
-# Score and classify sentiment
-df_bonds['sentiment_score'] = df_bonds['text'].apply(lambda x: analyzer.polarity_scores(x)['compound'])
+# Override VADER score for sarcastic or concern-heavy finance cases
+def override_vader(text, score):
+    text_lower = text.lower()
+    if (
+        "debt clock" in text_lower or
+        ("trillion" in text_lower and "debt" in text_lower) or
+        ("trillion" in text_lower and "yippee" in text_lower) or
+        "debt ceiling" in text_lower or
+        "fiscal cliff" in text_lower
+    ):
+        return -0.5  # strong negative override
+    return score
+
+# Score and classify sentiment with override
+df_bonds['sentiment_score'] = df_bonds['text'].apply(
+    lambda x: override_vader(x, analyzer.polarity_scores(x)['compound'])
+)
 df_bonds['sentiment_label'] = df_bonds['sentiment_score'].apply(classify)
+
 
 # Group by date and sentiment
 daily_counts = df_bonds.groupby(['date', 'sentiment_label']).size().unstack(fill_value=0)

@@ -4,6 +4,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from pandas.errors import EmptyDataError
 
 # --- LOAD ENV ---
 load_dotenv()
@@ -16,7 +17,7 @@ REDDIT_PASS = os.getenv("REDDIT_PASS")
 USER_AGENT = os.getenv("USER_AGENT")
 
 SUBREDDITS = ['bonds']  
-POST_LIMIT = 5000  # Fetch more than needed, then filter
+POST_LIMIT = 500  # Fetch more than needed, then filter
 
 CSV_PATH = 'reddit/csvs/reddit_sentiment_results.csv'
 
@@ -31,15 +32,26 @@ reddit = praw.Reddit(
     check_for_async=False
 )
 
-# --- LOAD EXISTING DATA ---
+
 if os.path.exists(CSV_PATH):
-    existing_df = pd.read_csv(CSV_PATH, parse_dates=["created"])
-    latest_time = existing_df["created"].max()
-    print(f"🔁 Last saved post was at: {latest_time}")
+    try:
+        existing_df = pd.read_csv(CSV_PATH, parse_dates=["created"])
+        if existing_df.empty or "created" not in existing_df.columns:
+            print("🆕 CSV exists but is empty or malformed. Scraping everything.")
+            latest_time = datetime.min
+        else:
+            latest_time = existing_df["created"].max()
+            print(f"🔁 Last saved post was at: {latest_time}")
+    except EmptyDataError:
+        print("🆕 CSV exists but is completely empty. Scraping everything.")
+        existing_df = pd.DataFrame()
+        latest_time = datetime.min
 else:
     existing_df = pd.DataFrame()
     latest_time = datetime.min
-    print("🆕 No existing data found. Scraping everything.")
+    print("🆕 No existing CSV found. Scraping everything.")
+
+
 
 # --- FETCH NEW POSTS ---
 all_posts = []

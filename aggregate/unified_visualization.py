@@ -1,9 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import yfinance as yf
 from datetime import timedelta
 import os
-import time
 
 # --- Ensure output directory exists ---
 os.makedirs("aggregate/visualizations", exist_ok=True)
@@ -12,7 +10,7 @@ os.makedirs("aggregate/visualizations", exist_ok=True)
 twitter = pd.read_csv("twitter/csvs/daily_sentiment_detail.csv", parse_dates=["date"])
 twitter["date"] = pd.to_datetime(twitter["date"]).dt.tz_localize(None)
 twitter.set_index("date", inplace=True)
-twitter["platform"] = "Twitter"
+twitter['platform'] = 'Twitter'
 twitter_summary = twitter[["pos_minus_neg", "platform"]].copy()
 
 # --- Load and process RSS ---
@@ -38,7 +36,7 @@ reddit_grouped["platform"] = "Reddit"
 reddit_summary = reddit_grouped[["pos_minus_neg", "platform"]].copy()
 reddit_summary.index.name = "date"
 
-# --- Combine all platforms and filter to past year ---
+# --- Combine and filter to last 12 months ---
 combined = pd.concat([twitter_summary, rss_summary, reddit_summary])
 combined.sort_index(inplace=True)
 cutoff_date = combined.index.max() - pd.DateOffset(days=365)
@@ -48,80 +46,43 @@ combined = combined.loc[combined.index >= cutoff_date]
 def normalize(group):
     return (group - group.mean()) / group.std()
 
-combined["normalized_sentiment"] = combined.groupby("platform")["pos_minus_neg"].transform(normalize)
+combined['normalized_sentiment'] = combined.groupby("platform")["pos_minus_neg"].transform(normalize)
 
-# --- Rolling sentiment trend (7-day average) ---
-combined["trend"] = combined.groupby("platform")["normalized_sentiment"].transform(
+# --- Rolling trend (7-day) ---
+combined['trend'] = combined.groupby("platform")["normalized_sentiment"].transform(
     lambda x: x.rolling(window=7, min_periods=1).mean()
 )
+# --- Load ETF price data ---
+etf_prices = pd.read_csv("aggregate/cached_etfs.csv", parse_dates=["Date"])
 
-# === Load ETF price data (TLT and AGG) with caching ===
-etf_cache_path = "aggregate/cached_etfs.csv"
-tickers = ["TLT", "AGG"]
+# Strip timestamp to date only to match sentiment index
+etf_prices["Date"] = pd.to_datetime(etf_prices["Date"]).dt.date
+etf_prices.set_index("Date", inplace=True)
+etf_prices.index = pd.to_datetime(etf_prices.index)
 
-try:
-    # Load from cache if available
-    etfs = pd.read_csv(etf_cache_path, header=[0, 1], index_col=0, parse_dates=True)
-    print("✅ Loaded ETF data from cache.")
-except FileNotFoundError:
-    print("📡 Downloading ETF data from Yahoo Finance...")
-    for attempt in range(3):
-        try:
-            etfs = yf.download(
-                tickers,
-                start=combined.index.min(),
-                end=combined.index.max(),
-                auto_adjust=True,
-                progress=False
-            )
-            etfs.to_csv(etf_cache_path)
-            print("✅ Saved ETF data to cache.")
-            break
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(10)
-    else:
-        raise RuntimeError("❌ Failed to download ETF data after 3 attempts.")
+# Trim to same range as sentiment
+etf_prices = etf_prices.loc[combined.index.min():combined.index.max()]
 
-# --- Normalize ETF prices ---
-etf_prices = etfs["Close"][tickers].dropna()
+# Normalize ETF prices
 etf_normalized = (etf_prices - etf_prices.mean()) / etf_prices.std()
 etf_normalized = etf_normalized.reindex(combined.index).ffill()
 
-# === Plot 1: Sentiment Trends + ETF Comparison ===
+# --- Plot: Normalized Sentiment Trends and ETF Prices (7d Rolling) ---
 plt.figure(figsize=(15, 6))
-
-# Sentiment trends
 for platform in combined["platform"].unique():
-    data = combined[combined["platform"] == platform]
-    plt.plot(data.index, data["trend"], label=f"{platform} (7d Avg)", linewidth=2)
+    plt.plot(combined[combined["platform"] == platform].index,
+             combined[combined["platform"] == platform]["trend"],
+             label=f"{platform} (7d Avg)", linewidth=2)
 
-# ETF price trends
 for ticker in etf_normalized.columns:
-    plt.plot(etf_normalized.index, etf_normalized[ticker], linestyle="--", linewidth=1.5, label=f"{ticker} (Norm Price)")
+    plt.plot(etf_normalized.index, etf_normalized[ticker],
+             linestyle='--', linewidth=1.5, label=f"{ticker} ETF (Z-Score)")
 
-plt.axhline(0, color="gray", linestyle="--", linewidth=1)
-plt.title("Bond Sentiment vs. ETF Prices (Normalized, Last 12 Months)", fontsize=16)
+plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.title("Normalized Bond Sentiment vs. ETF Prices (Last 12 Months)", fontsize=16)
 plt.xlabel("Date")
-plt.ylabel("Z-Score Normalized Value")
+plt.ylabel("Z-Score Normalized Values")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("aggregate/visualizations/bond_sentiment_vs_etfs_normalized.png")
-
-# === Plot 2: Cumulative Normalized Sentiment ===
-combined["cumulative"] = combined.groupby("platform")["normalized_sentiment"].cumsum()
-
-plt.figure(figsize=(15, 6))
-for platform in combined["platform"].unique():
-    data = combined[combined["platform"] == platform]
-    plt.plot(data.index, data["cumulative"], label=f"{platform} Cumulative", linewidth=2)
-
-plt.axhline(0, color="gray", linestyle="--", linewidth=1)
-plt.title("Cumulative Normalized Sentiment (Last 12 Months)", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Cumulative Z-Score Sentiment")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("aggregate/visualizations/bond_sentiment_normalized_cumulative.png")
+plt.savefig("aggregate/visualizations/bond_sentiment_vs_etfs.png")

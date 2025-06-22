@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 from datetime import timedelta
 
 # --- Load and preprocess data ---
-df = pd.read_csv("rss/csvs/rss_sentiment_results.csv", parse_dates=["published"])
-df.rename(columns={"published": "date"}, inplace=True)
-df["date"] = df["date"].dt.date  # Strip time component for grouping
+rss = pd.read_csv("rss/csvs/rss_sentiment_results.csv", parse_dates=["published"])
+rss["date"] = pd.to_datetime(rss["published"]).dt.tz_localize(None).dt.date
+rss["date"] = pd.to_datetime(rss["date"])
 
 # --- Create daily sentiment counts ---
 daily_counts = df.groupby(["date", "sentiment_label"]).size().unstack(fill_value=0)
@@ -33,7 +33,7 @@ plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.savefig("rss/visualizations/bond_sentiment_plot_full.png")
-
+ 
 # === Plot 2: Past 7 Days ===
 last_date = daily_counts.index.max()
 start_date = last_date - timedelta(days=6)

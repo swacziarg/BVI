@@ -63,7 +63,7 @@ plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.savefig("reddit/visualizations/hourly_comment_sentiment_week.png")
-
+ 
 # === Plot 4: Cumulative Sentiment Gap Over Time ===
 df_reset = df.reset_index()
 cumulative_gap = df_reset.groupby("date")["sentiment_gap"].mean().cumsum()

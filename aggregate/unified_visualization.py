@@ -10,7 +10,7 @@ os.makedirs("aggregate/visualizations", exist_ok=True)
 twitter = pd.read_csv("twitter/csvs/daily_sentiment_detail.csv", parse_dates=["date"])
 twitter["date"] = pd.to_datetime(twitter["date"]).dt.tz_localize(None)
 twitter.set_index("date", inplace=True)
-twitter['platform'] = 'Twitter'
+twitter["platform"] = "Twitter"
 twitter_summary = twitter[["pos_minus_neg", "platform"]].copy()
 
 # --- Load and process RSS ---
@@ -46,39 +46,46 @@ combined = combined.loc[combined.index >= cutoff_date]
 def normalize(group):
     return (group - group.mean()) / group.std()
 
-combined['normalized_sentiment'] = combined.groupby("platform")["pos_minus_neg"].transform(normalize)
+combined["normalized_sentiment"] = combined.groupby("platform")["pos_minus_neg"].transform(normalize)
 
 # --- Rolling trend (7-day) ---
-combined['trend'] = combined.groupby("platform")["normalized_sentiment"].transform(
+combined["trend"] = combined.groupby("platform")["normalized_sentiment"].transform(
     lambda x: x.rolling(window=7, min_periods=1).mean()
 )
-# --- Load ETF price data ---
-etf_prices = pd.read_csv("aggregate/cached_etfs.csv", parse_dates=["Date"])
 
-# Strip timestamp to date only to match sentiment index
-etf_prices["Date"] = pd.to_datetime(etf_prices["Date"]).dt.date
-etf_prices.set_index("Date", inplace=True)
-etf_prices.index = pd.to_datetime(etf_prices.index)
+# --- Load ETF price data from raw CSVs ---
+cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
+agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=cols, skiprows=1)
+tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=cols, skiprows=1)
 
-# Trim to same range as sentiment
-etf_prices = etf_prices.loc[combined.index.min():combined.index.max()]
+agg = agg[["Date", "Close"]].rename(columns={"Close": "AGG"})
+tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})
 
-# Normalize ETF prices
-etf_normalized = (etf_prices - etf_prices.mean()) / etf_prices.std()
+agg["Date"] = pd.to_datetime(agg["Date"])
+tlt["Date"] = pd.to_datetime(tlt["Date"])
+etfs = pd.merge(agg, tlt, on="Date", how="inner").sort_values("Date")
+etfs.set_index("Date", inplace=True)
+
+# --- Align ETF data to sentiment date range ---
+etfs = etfs.loc[combined.index.min():combined.index.max()]
+etf_normalized = (etfs - etfs.mean()) / etfs.std()
 etf_normalized = etf_normalized.reindex(combined.index).ffill()
 
-# --- Plot: Normalized Sentiment Trends and ETF Prices (7d Rolling) ---
+# --- Plot: Sentiment Trends + ETF Prices ---
 plt.figure(figsize=(15, 6))
+
+# Plot each sentiment source
 for platform in combined["platform"].unique():
-    plt.plot(combined[combined["platform"] == platform].index,
-             combined[combined["platform"] == platform]["trend"],
+    platform_data = combined[combined["platform"] == platform]
+    plt.plot(platform_data.index, platform_data["trend"],
              label=f"{platform} (7d Avg)", linewidth=2)
 
+# Overlay ETF curves
 for ticker in etf_normalized.columns:
     plt.plot(etf_normalized.index, etf_normalized[ticker],
-             linestyle='--', linewidth=1.5, label=f"{ticker} ETF (Z-Score)")
+             linestyle="--", linewidth=1.5, label=f"{ticker} ETF (Z-Score)")
 
-plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.axhline(0, color="gray", linestyle="--", linewidth=1)
 plt.title("Normalized Bond Sentiment vs. ETF Prices (Last 12 Months)", fontsize=16)
 plt.xlabel("Date")
 plt.ylabel("Z-Score Normalized Values")

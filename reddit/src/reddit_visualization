@@ -8,62 +8,73 @@ os.makedirs("reddit/visualizations", exist_ok=True)
 
 # --- Load and preprocess data ---
 df = pd.read_csv("reddit/csvs/reddit_sentiment_results.csv", parse_dates=["created"])
-df.rename(columns={"created": "date"}, inplace=True)
-df["date"] = df["date"].dt.date  # Strip time component for grouping
+df.rename(columns={"created": "datetime"}, inplace=True)
+df["date"] = df["datetime"].dt.date
 
-# --- Create daily sentiment counts ---
-daily_counts = df.groupby(["date", "sentiment_label"]).size().unstack(fill_value=0)
+# --- Convert date for grouping ---
+df["date"] = pd.to_datetime(df["date"])
 
-# Ensure all sentiment types are present
-for label in ["positive", "negative", "neutral"]:
-    if label not in daily_counts.columns:
-        daily_counts[label] = 0
+# === Plot 1: Daily Average Title vs. Comment Sentiment ===
+daily_avg = df.groupby("date")[["sentiment_score", "avg_comment_sentiment"]].mean()
 
-# --- Calculate net sentiment score ---
-daily_counts["pos_minus_neg"] = daily_counts["positive"] - daily_counts["negative"]
-daily_counts.index = pd.to_datetime(daily_counts.index)
-
-# --- Rolling trend (7-day average) ---
-daily_counts['sentiment_trend'] = daily_counts['pos_minus_neg'].rolling(window=7, min_periods=1).mean()
-
-# === Plot 1: Full Time Series ===
 plt.figure(figsize=(14, 6))
-plt.plot(daily_counts.index, daily_counts['sentiment_trend'], label='Reddit Sentiment (7d Avg)', linewidth=2)
+plt.plot(daily_avg.index, daily_avg["sentiment_score"], label="Avg Title Sentiment", linewidth=2)
+plt.plot(daily_avg.index, daily_avg["avg_comment_sentiment"], label="Avg Comment Sentiment", linewidth=2)
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Reddit Bond Sentiment Over Time", fontsize=16)
+plt.title("Average Title vs. Comment Sentiment Over Time", fontsize=16)
 plt.xlabel("Date")
-plt.ylabel("Net Sentiment (Positive - Negative)")
+plt.ylabel("Sentiment Score")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/bond_sentiment_plot_full.png")
+plt.savefig("reddit/visualizations/title_vs_comment_sentiment_avg.png")
 
-# === Plot 2: Past 7 Days ===
-last_date = daily_counts.index.max()
-start_date = last_date - timedelta(days=6)
-weekly_data = daily_counts.loc[start_date:last_date]
+# === Plot 2: Daily Sentiment Gap (Title - Comments) ===
+df["sentiment_gap"] = df["sentiment_score"] - df["avg_comment_sentiment"]
+daily_gap = df.groupby("date")["sentiment_gap"].mean()
 
-plt.figure(figsize=(10, 4))
-plt.plot(weekly_data.index, weekly_data['pos_minus_neg'], marker='o', linestyle='-', label='Daily Net Sentiment')
+plt.figure(figsize=(14, 6))
+plt.plot(daily_gap.index, daily_gap, label="Avg Sentiment Gap", linewidth=2)
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Reddit Bond Sentiment – Past 7 Days", fontsize=14)
+plt.title("Daily Sentiment Gap (Title - Comments)", fontsize=16)
 plt.xlabel("Date")
-plt.ylabel("Net Sentiment")
-plt.grid(True)
+plt.ylabel("Sentiment Gap")
 plt.legend()
+plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/bond_sentiment_plot_week.png")
+plt.savefig("reddit/visualizations/sentiment_gap_daily.png")
 
-# === Plot 3: Cumulative Sentiment (Accumulator) ===
-daily_counts['sentiment_accumulator'] = daily_counts['pos_minus_neg'].cumsum()
+# === Plot 3: Hourly Comment Sentiment (Past 7 Days) ===
+df.set_index("datetime", inplace=True)
+hourly_comments = df["avg_comment_sentiment"].resample("H").mean()
+
+# Filter to last 7 days
+last_hour = hourly_comments.index.max()
+start_hour = last_hour - timedelta(days=7)
+weekly_hourly = hourly_comments.loc[start_hour:last_hour].fillna(0)
 
 plt.figure(figsize=(14, 5))
-plt.plot(daily_counts.index, daily_counts['sentiment_accumulator'], color='purple', linewidth=2, label='Cumulative Sentiment')
+plt.plot(weekly_hourly.index, weekly_hourly, label="Hourly Avg Comment Sentiment", linewidth=1.5)
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Cumulative Reddit Bond Sentiment Over Time", fontsize=16)
+plt.title("Hourly Comment Sentiment – Past 7 Days", fontsize=14)
+plt.xlabel("Datetime")
+plt.ylabel("Avg Comment Sentiment")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.savefig("reddit/visualizations/hourly_comment_sentiment_week.png")
+
+# === Plot 4: Cumulative Sentiment Gap Over Time ===
+df_reset = df.reset_index()
+cumulative_gap = df_reset.groupby("date")["sentiment_gap"].mean().cumsum()
+
+plt.figure(figsize=(14, 5))
+plt.plot(cumulative_gap.index, cumulative_gap, color='darkred', linewidth=2, label="Cumulative Sentiment Gap")
+plt.axhline(0, color='gray', linestyle='--', linewidth=1)
+plt.title("Cumulative Sentiment Gap (Title - Comments)", fontsize=16)
 plt.xlabel("Date")
-plt.ylabel("Cumulative Sentiment (Sum of Net Daily Sentiment)")
+plt.ylabel("Cumulative Gap")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/bond_sentiment_accumulator.png")
+plt.savefig("reddit/visualizations/cumulative_sentiment_gap.png")

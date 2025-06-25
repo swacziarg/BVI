@@ -17,7 +17,7 @@ REDDIT_PASS = os.getenv("REDDIT_PASS")
 USER_AGENT = os.getenv("USER_AGENT")
 
 SUBREDDITS = ['bonds']
-POST_LIMIT = 500
+POST_LIMIT = 5000
 CSV_PATH = 'reddit/csvs/reddit_raw_posts_and_comments.csv'
 
 # --- INIT ---

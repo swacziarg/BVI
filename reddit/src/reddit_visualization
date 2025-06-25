@@ -6,75 +6,50 @@ import os
 # --- Ensure output directory exists ---
 os.makedirs("reddit/visualizations", exist_ok=True)
 
-# --- Load and preprocess data ---
-df = pd.read_csv("reddit/csvs/reddit_sentiment_results.csv", parse_dates=["created"])
+# --- Load labeled comment data ---
+df = pd.read_csv("reddit/csvs/auto_labeled_reddit_comments.csv")
+
+# Simulate a 'created' datetime if it's missing (for demo/testing)
+if 'created' not in df.columns:
+    import numpy as np
+    df['created'] = pd.date_range(end=pd.Timestamp.today(), periods=len(df), freq="H")
+
 df.rename(columns={"created": "datetime"}, inplace=True)
-df["date"] = df["datetime"].dt.date
+df["date"] = pd.to_datetime(df["datetime"]).dt.date
+df["datetime"] = pd.to_datetime(df["datetime"])
 
-# --- Convert date for grouping ---
-df["date"] = pd.to_datetime(df["date"])
+# --- Map sentiment to numeric scores ---
+sentiment_to_score = {"positive": 1, "neutral": 0, "negative": -1}
+df["sentiment_score"] = df["sentiment"].map(sentiment_to_score)
 
-# === Plot 1: Daily Average Title vs. Comment Sentiment ===
-daily_avg = df.groupby("date")[["sentiment_score", "avg_comment_sentiment"]].mean()
+# === Plot 1: Daily Average Comment Sentiment ===
+daily_avg = df.groupby("date")["sentiment_score"].mean()
 
 plt.figure(figsize=(14, 6))
-plt.plot(daily_avg.index, daily_avg["sentiment_score"], label="Avg Title Sentiment", linewidth=2)
-plt.plot(daily_avg.index, daily_avg["avg_comment_sentiment"], label="Avg Comment Sentiment", linewidth=2)
+plt.plot(daily_avg.index, daily_avg.values, label="Avg Comment Sentiment", linewidth=2)
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Average Title vs. Comment Sentiment Over Time", fontsize=16)
+plt.title("Average Comment Sentiment Over Time", fontsize=16)
 plt.xlabel("Date")
 plt.ylabel("Sentiment Score")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/title_vs_comment_sentiment_avg.png")
+plt.savefig("reddit/visualizations/daily_comment_sentiment.png")
 
-# === Plot 2: Daily Sentiment Gap (Title - Comments) ===
-df["sentiment_gap"] = df["sentiment_score"] - df["avg_comment_sentiment"]
-daily_gap = df.groupby("date")["sentiment_gap"].mean()
-
-plt.figure(figsize=(14, 6))
-plt.plot(daily_gap.index, daily_gap, label="Avg Sentiment Gap", linewidth=2)
-plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Daily Sentiment Gap (Title - Comments)", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Sentiment Gap")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("reddit/visualizations/sentiment_gap_daily.png")
-
-# === Plot 3: Hourly Comment Sentiment (Past 7 Days) ===
+# === Plot 2: Hourly Comment Sentiment (Past 7 Days) ===
 df.set_index("datetime", inplace=True)
-hourly_comments = df["avg_comment_sentiment"].resample("H").mean()
-
-# Filter to last 7 days
-last_hour = hourly_comments.index.max()
+hourly_avg = df["sentiment_score"].resample("H").mean()
+last_hour = hourly_avg.index.max()
 start_hour = last_hour - timedelta(days=7)
-weekly_hourly = hourly_comments.loc[start_hour:last_hour].fillna(0)
+weekly_hourly = hourly_avg.loc[start_hour:last_hour].fillna(0)
 
 plt.figure(figsize=(14, 5))
-plt.plot(weekly_hourly.index, weekly_hourly, label="Hourly Avg Comment Sentiment", linewidth=1.5)
+plt.plot(weekly_hourly.index, weekly_hourly, label="Hourly Avg Sentiment", linewidth=1.5)
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
 plt.title("Hourly Comment Sentiment – Past 7 Days", fontsize=14)
 plt.xlabel("Datetime")
-plt.ylabel("Avg Comment Sentiment")
+plt.ylabel("Avg Sentiment")
 plt.grid(True)
 plt.legend()
 plt.tight_layout()
 plt.savefig("reddit/visualizations/hourly_comment_sentiment_week.png")
- 
-# === Plot 4: Cumulative Sentiment Gap Over Time ===
-df_reset = df.reset_index()
-cumulative_gap = df_reset.groupby("date")["sentiment_gap"].mean().cumsum()
-
-plt.figure(figsize=(14, 5))
-plt.plot(cumulative_gap.index, cumulative_gap, color='darkred', linewidth=2, label="Cumulative Sentiment Gap")
-plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Cumulative Sentiment Gap (Title - Comments)", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Cumulative Gap")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("reddit/visualizations/cumulative_sentiment_gap.png")

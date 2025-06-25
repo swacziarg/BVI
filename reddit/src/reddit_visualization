@@ -6,50 +6,71 @@ import os
 # --- Ensure output directory exists ---
 os.makedirs("reddit/visualizations", exist_ok=True)
 
-# --- Load labeled comment data ---
+# --- Load full labeled dataset (must include both titles and comments) ---
 df = pd.read_csv("reddit/csvs/auto_labeled_reddit_comments.csv")
 
-# Simulate a 'created' datetime if it's missing (for demo/testing)
+# Simulate 'created' timestamp if missing
 if 'created' not in df.columns:
     import numpy as np
     df['created'] = pd.date_range(end=pd.Timestamp.today(), periods=len(df), freq="H")
 
+# --- Preprocessing ---
 df.rename(columns={"created": "datetime"}, inplace=True)
-df["date"] = pd.to_datetime(df["datetime"]).dt.date
 df["datetime"] = pd.to_datetime(df["datetime"])
+df["date"] = df["datetime"].dt.date
 
-# --- Map sentiment to numeric scores ---
+# Required columns: 'type', 'sentiment', 'datetime'
+if 'type' not in df.columns:
+    df['type'] = 'comment'  # fallback if dataset contains only comments
+
+# Map sentiment to numerical score
 sentiment_to_score = {"positive": 1, "neutral": 0, "negative": -1}
 df["sentiment_score"] = df["sentiment"].map(sentiment_to_score)
 
-# === Plot 1: Daily Average Comment Sentiment ===
-daily_avg = df.groupby("date")["sentiment_score"].mean()
+# --- Daily sentiment trends ---
+daily_sentiment = df.groupby(["date", "type"])["sentiment_score"].mean().unstack()
 
+# Create a smart combined score (e.g., equal weight for title + comment)
+daily_sentiment["combined"] = daily_sentiment.mean(axis=1)
+
+# --- Plot 1: Daily Average Sentiment by Type ---
 plt.figure(figsize=(14, 6))
-plt.plot(daily_avg.index, daily_avg.values, label="Avg Comment Sentiment", linewidth=2)
+if 'title' in daily_sentiment.columns:
+    plt.plot(daily_sentiment.index, daily_sentiment["title"], label="Title Sentiment", linewidth=2)
+if 'comment' in daily_sentiment.columns:
+    plt.plot(daily_sentiment.index, daily_sentiment["comment"], label="Comment Sentiment", linewidth=2)
+plt.plot(daily_sentiment.index, daily_sentiment["combined"], label="Combined Sentiment", linewidth=2, linestyle='--')
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Average Comment Sentiment Over Time", fontsize=16)
+plt.title("Daily Sentiment Trends: Titles vs Comments", fontsize=16)
 plt.xlabel("Date")
 plt.ylabel("Sentiment Score")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/daily_comment_sentiment.png")
+plt.savefig("reddit/visualizations/daily_combined_sentiment.png")
 
-# === Plot 2: Hourly Comment Sentiment (Past 7 Days) ===
-df.set_index("datetime", inplace=True)
-hourly_avg = df["sentiment_score"].resample("H").mean()
-last_hour = hourly_avg.index.max()
-start_hour = last_hour - timedelta(days=7)
-weekly_hourly = hourly_avg.loc[start_hour:last_hour].fillna(0)
+# --- Plot 2: Rolling 7-Day Average Sentiment ---
+rolling_sentiment = daily_sentiment.rolling(window=7, min_periods=1).mean()
 
-plt.figure(figsize=(14, 5))
-plt.plot(weekly_hourly.index, weekly_hourly, label="Hourly Avg Sentiment", linewidth=1.5)
+plt.figure(figsize=(14, 6))
+plt.plot(rolling_sentiment.index, rolling_sentiment["combined"], label="7-Day Rolling Avg Sentiment", linewidth=2, color='darkblue')
 plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Hourly Comment Sentiment – Past 7 Days", fontsize=14)
-plt.xlabel("Datetime")
-plt.ylabel("Avg Sentiment")
+plt.title("7-Day Rolling Average Sentiment (Combined Posts + Comments)", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Sentiment Score")
+plt.legend()
 plt.grid(True)
+plt.tight_layout()
+plt.savefig("reddit/visualizations/rolling_combined_sentiment.png")
+
+# --- Plot 3: Contribution (Count) of Titles vs Comments ---
+count_by_type = df.groupby(["date", "type"]).size().unstack(fill_value=0)
+
+plt.figure(figsize=(14, 6))
+count_by_type.plot(kind='bar', stacked=True, figsize=(14, 6), width=1, ax=plt.gca())
+plt.title("Post Volume: Titles vs Comments Per Day", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Number of Posts/Comments")
 plt.legend()
 plt.tight_layout()
-plt.savefig("reddit/visualizations/hourly_comment_sentiment_week.png")
+plt.savefig("reddit/visualizations/volume_by_type.png")

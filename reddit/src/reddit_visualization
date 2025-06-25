@@ -74,3 +74,38 @@ plt.ylabel("Number of Posts/Comments")
 plt.legend()
 plt.tight_layout()
 plt.savefig("reddit/visualizations/volume_by_type.png")
+# === Load ETF price data ===
+etf_cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
+agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=etf_cols, skiprows=1)
+tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=etf_cols, skiprows=1)
+
+agg = agg[["Date", "Close"]].rename(columns={"Close": "AGG"})
+tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})
+
+agg["Date"] = pd.to_datetime(agg["Date"])
+tlt["Date"] = pd.to_datetime(tlt["Date"])
+
+etfs = pd.merge(agg, tlt, on="Date", how="inner").sort_values("Date")
+etfs.set_index("Date", inplace=True)
+
+# --- Align to sentiment date range ---
+etfs = etfs.loc[daily_sentiment.index.min():daily_sentiment.index.max()]
+etf_normalized = (etfs - etfs.mean()) / etfs.std()
+etf_normalized = etf_normalized.reindex(daily_sentiment.index).ffill()
+
+# === Plot 4: Combined Reddit Sentiment vs Bond ETFs ===
+plt.figure(figsize=(15, 6))
+plt.plot(rolling_sentiment.index, rolling_sentiment["combined"], label="Reddit Sentiment (7d Avg)", linewidth=2, color='darkblue')
+
+for ticker in etf_normalized.columns:
+    plt.plot(etf_normalized.index, etf_normalized[ticker],
+             linestyle="--", linewidth=1.5, label=f"{ticker} ETF (Z-Score)")
+
+plt.axhline(0, color="gray", linestyle="--", linewidth=1)
+plt.title("Reddit Sentiment vs Bond ETF Performance (Normalized)", fontsize=16)
+plt.xlabel("Date")
+plt.ylabel("Z-Score / Sentiment")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.savefig("reddit/visualizations/reddit_sentiment_vs_etfs.png")

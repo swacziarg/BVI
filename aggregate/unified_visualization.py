@@ -6,14 +6,14 @@ import os
 # --- Ensure output directory exists ---
 os.makedirs("aggregate/visualizations", exist_ok=True)
 
-# --- Load and process Twitter ---
+# === Load and process Twitter ===
 twitter = pd.read_csv("twitter/csvs/daily_sentiment_detail.csv", parse_dates=["date"])
 twitter["date"] = pd.to_datetime(twitter["date"]).dt.tz_localize(None)
 twitter.set_index("date", inplace=True)
 twitter["platform"] = "Twitter"
 twitter_summary = twitter[["pos_minus_neg", "platform"]].copy()
 
-# --- Load and process RSS ---
+# === Load and process RSS ===
 rss_raw = pd.read_csv("rss/csvs/rss_sentiment_results.csv", parse_dates=["published"])
 rss_raw["date"] = pd.to_datetime(rss_raw["published"]).dt.tz_localize(None).dt.date
 rss_raw["date"] = pd.to_datetime(rss_raw["date"])
@@ -26,8 +26,18 @@ rss_grouped["platform"] = "RSS"
 rss_summary = rss_grouped[["pos_minus_neg", "platform"]].copy()
 rss_summary.index.name = "date"
 
-# --- Load and process Reddit ---
+# === Load and process Reddit ===
 reddit = pd.read_csv("reddit/csvs/reddit_sentiment_results.csv", parse_dates=["created"])
+
+# Simulate sentiment columns if missing
+if "sentiment_score" not in reddit.columns:
+    # Fallback: compute sentiment score from label
+    sentiment_map = {"positive": 1, "neutral": 0, "negative": -1}
+    reddit["sentiment_score"] = reddit["sentiment"].map(sentiment_map)
+
+if "avg_comment_sentiment" not in reddit.columns:
+    reddit["avg_comment_sentiment"] = reddit["sentiment_score"]  # fallback
+
 reddit["date"] = pd.to_datetime(reddit["created"]).dt.tz_localize(None).dt.date
 reddit["date"] = pd.to_datetime(reddit["date"])
 reddit_grouped = reddit.groupby("date")[["sentiment_score", "avg_comment_sentiment"]].mean()
@@ -36,51 +46,52 @@ reddit_grouped["platform"] = "Reddit"
 reddit_summary = reddit_grouped[["pos_minus_neg", "platform"]].copy()
 reddit_summary.index.name = "date"
 
-# --- Combine and filter to last 12 months ---
+# === Combine all ===
 combined = pd.concat([twitter_summary, rss_summary, reddit_summary])
 combined.sort_index(inplace=True)
+
+# Limit to past 12 months
 cutoff_date = combined.index.max() - pd.DateOffset(days=365)
 combined = combined.loc[combined.index >= cutoff_date]
 
-# --- Normalize sentiment by platform ---
+# --- Normalize sentiment scores ---
 def normalize(group):
     return (group - group.mean()) / group.std()
 
 combined["normalized_sentiment"] = combined.groupby("platform")["pos_minus_neg"].transform(normalize)
 
-# --- Rolling trend (7-day) ---
+# --- Rolling 7-day trend ---
 combined["trend"] = combined.groupby("platform")["normalized_sentiment"].transform(
     lambda x: x.rolling(window=7, min_periods=1).mean()
 )
 
-# --- Load ETF price data from raw CSVs ---
+# === Load ETF data ===
 cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
 agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=cols, skiprows=1)
 tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=cols, skiprows=1)
 
 agg = agg[["Date", "Close"]].rename(columns={"Close": "AGG"})
 tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})
-
 agg["Date"] = pd.to_datetime(agg["Date"])
 tlt["Date"] = pd.to_datetime(tlt["Date"])
+
 etfs = pd.merge(agg, tlt, on="Date", how="inner").sort_values("Date")
 etfs.set_index("Date", inplace=True)
 
-# --- Align ETF data to sentiment date range ---
+# --- Align ETFs to sentiment dates ---
 etfs = etfs.loc[combined.index.min():combined.index.max()]
 etf_normalized = (etfs - etfs.mean()) / etfs.std()
 etf_normalized = etf_normalized.reindex(combined.index).ffill()
 
-# --- Plot: Sentiment Trends + ETF Prices ---
+# === Plot: Sentiment Trends and ETFs ===
 plt.figure(figsize=(15, 6))
 
-# Plot each sentiment source
+# Plot sentiment by platform
 for platform in combined["platform"].unique():
     platform_data = combined[combined["platform"] == platform]
-    plt.plot(platform_data.index, platform_data["trend"],
-             label=f"{platform} (7d Avg)", linewidth=2)
+    plt.plot(platform_data.index, platform_data["trend"], label=f"{platform} (7d Avg)", linewidth=2)
 
-# Overlay ETF curves
+# Overlay ETF performance
 for ticker in etf_normalized.columns:
     plt.plot(etf_normalized.index, etf_normalized[ticker],
              linestyle="--", linewidth=1.5, label=f"{ticker} ETF (Z-Score)")

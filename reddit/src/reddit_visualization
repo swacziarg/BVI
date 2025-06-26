@@ -42,8 +42,8 @@ daily_sentiment = daily_sentiment.asfreq("D").fillna(0)
 
 # === Load ETF data ===
 etf_cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
-agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=etf_cols, skiprows=1)
-tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=etf_cols, skiprows=1)
+agg = pd.read_csv("aggregate/AGG.csv", names=etf_cols, skiprows=1)
+tlt = pd.read_csv("aggregate/TLT.csv", names=etf_cols, skiprows=1)
 
 agg = agg[["Date", "Close"]].rename(columns={"Close": "AGG"})
 tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})

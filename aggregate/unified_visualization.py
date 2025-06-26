@@ -67,8 +67,8 @@ combined["trend"] = combined.groupby("platform")["normalized_sentiment"].transfo
 
 # === Load ETF data ===
 cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
-agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=cols, skiprows=1)
-tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=cols, skiprows=1)
+agg = pd.read_csv("aggregate/AGG.csv", names=cols, skiprows=1)
+tlt = pd.read_csv("aggregate/TLT.csv", names=cols, skiprows=1)
 
 agg = agg[["Date", "Close"]].rename(columns={"Close": "AGG"})
 tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})

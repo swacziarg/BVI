@@ -1,80 +1,46 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import timedelta
+import numpy as np
 import os
 
-# --- Ensure output directory exists ---
+# === Ensure output directory exists ===
 os.makedirs("reddit/visualizations", exist_ok=True)
 
-# --- Load full labeled dataset (must include both titles and comments) ---
+# === Load Reddit sentiment data ===
 df = pd.read_csv("reddit/csvs/auto_labeled_reddit_comments.csv")
 
-# Simulate 'created' timestamp if missing
-if 'created' not in df.columns:
-    import numpy as np
-    df['created'] = pd.date_range(end=pd.Timestamp.today(), periods=len(df), freq="H")
-
 # --- Preprocessing ---
+
+# Simulate 'created' datetime if missing
+if 'created' not in df.columns:
+    df['created'] = pd.date_range(end=pd.Timestamp.today(), periods=len(df), freq="h")
+
+# Simulate 'type' column if missing
+if 'type' not in df.columns:
+    df['type'] = 'comment'
+
+# Validate sentiment values
+valid_sentiments = {"positive", "neutral", "negative"}
+df = df[df["sentiment"].isin(valid_sentiments)]
+
+# Convert dates
 df.rename(columns={"created": "datetime"}, inplace=True)
 df["datetime"] = pd.to_datetime(df["datetime"])
 df["date"] = df["datetime"].dt.date
+df["date"] = pd.to_datetime(df["date"])
 
-# Required columns: 'type', 'sentiment', 'datetime'
-if 'type' not in df.columns:
-    df['type'] = 'comment'  # fallback if dataset contains only comments
-
-# Map sentiment to numerical score
+# Map sentiment to numeric scores
 sentiment_to_score = {"positive": 1, "neutral": 0, "negative": -1}
 df["sentiment_score"] = df["sentiment"].map(sentiment_to_score)
 
-# --- Daily sentiment trends ---
-daily_sentiment = df.groupby(["date", "type"])["sentiment_score"].mean().unstack()
-
-# Create a smart combined score (e.g., equal weight for title + comment)
+# --- Daily sentiment aggregation ---
+daily_sentiment = df.groupby(["date", "type"])["sentiment_score"].mean().unstack(fill_value=0)
 daily_sentiment["combined"] = daily_sentiment.mean(axis=1)
 
-# --- Plot 1: Daily Average Sentiment by Type ---
-plt.figure(figsize=(14, 6))
-if 'title' in daily_sentiment.columns:
-    plt.plot(daily_sentiment.index, daily_sentiment["title"], label="Title Sentiment", linewidth=2)
-if 'comment' in daily_sentiment.columns:
-    plt.plot(daily_sentiment.index, daily_sentiment["comment"], label="Comment Sentiment", linewidth=2)
-plt.plot(daily_sentiment.index, daily_sentiment["combined"], label="Combined Sentiment", linewidth=2, linestyle='--')
-plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("Daily Sentiment Trends: Titles vs Comments", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Sentiment Score")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("reddit/visualizations/daily_combined_sentiment.png")
+# --- Ensure full daily index ---
+daily_sentiment = daily_sentiment.asfreq("D").fillna(0)
 
-# --- Plot 2: Rolling 7-Day Average Sentiment ---
-rolling_sentiment = daily_sentiment.rolling(window=7, min_periods=1).mean()
-
-plt.figure(figsize=(14, 6))
-plt.plot(rolling_sentiment.index, rolling_sentiment["combined"], label="7-Day Rolling Avg Sentiment", linewidth=2, color='darkblue')
-plt.axhline(0, color='gray', linestyle='--', linewidth=1)
-plt.title("7-Day Rolling Average Sentiment (Combined Posts + Comments)", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Sentiment Score")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("reddit/visualizations/rolling_combined_sentiment.png")
-
-# --- Plot 3: Contribution (Count) of Titles vs Comments ---
-count_by_type = df.groupby(["date", "type"]).size().unstack(fill_value=0)
-
-plt.figure(figsize=(14, 6))
-count_by_type.plot(kind='bar', stacked=True, figsize=(14, 6), width=1, ax=plt.gca())
-plt.title("Post Volume: Titles vs Comments Per Day", fontsize=16)
-plt.xlabel("Date")
-plt.ylabel("Number of Posts/Comments")
-plt.legend()
-plt.tight_layout()
-plt.savefig("reddit/visualizations/volume_by_type.png")
-# === Load ETF price data ===
+# === Load ETF data ===
 etf_cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
 agg = pd.read_csv("aggregate/Download Data - FUND_US_ARCX_AGG.csv", names=etf_cols, skiprows=1)
 tlt = pd.read_csv("aggregate/Download Data - FUND_US_XNAS_TLT.csv", names=etf_cols, skiprows=1)
@@ -85,27 +51,43 @@ tlt = tlt[["Date", "Close"]].rename(columns={"Close": "TLT"})
 agg["Date"] = pd.to_datetime(agg["Date"])
 tlt["Date"] = pd.to_datetime(tlt["Date"])
 
-etfs = pd.merge(agg, tlt, on="Date", how="inner").sort_values("Date")
-etfs.set_index("Date", inplace=True)
+etfs = pd.merge(agg, tlt, on="Date", how="inner").sort_values("Date").set_index("Date")
 
-# --- Align to sentiment date range ---
-etfs = etfs.loc[daily_sentiment.index.min():daily_sentiment.index.max()]
-etf_normalized = (etfs - etfs.mean()) / etfs.std()
-etf_normalized = etf_normalized.reindex(daily_sentiment.index).ffill()
+# --- Align date range to ETFs ---
+etf_start = etfs.index.min()
+sentiment_end = daily_sentiment.index.max()
+date_range = pd.date_range(etf_start, sentiment_end, freq='D')
 
-# === Plot 4: Combined Reddit Sentiment vs Bond ETFs ===
+# Clip and reindex sentiment to ETF-aligned range
+daily_sentiment = daily_sentiment.loc[etf_start:sentiment_end].reindex(date_range).fillna(0)
+
+# Reindex ETF prices to match sentiment
+etfs = etfs.reindex(date_range).ffill()
+
+# --- Normalize (Z-score) ---
+etfs_normalized = (etfs - etfs.mean()) / etfs.std()
+sentiment_normalized = (daily_sentiment["combined"] - daily_sentiment["combined"].mean()) / daily_sentiment["combined"].std()
+
+# --- 30-day rolling sentiment ---
+rolling_sentiment = sentiment_normalized.rolling(window=7, min_periods=1).mean()
+
+# === Plot: Normalized Reddit Sentiment vs ETF Prices ===
 plt.figure(figsize=(15, 6))
-plt.plot(rolling_sentiment.index, rolling_sentiment["combined"], label="Reddit Sentiment (7d Avg)", linewidth=2, color='darkblue')
 
-for ticker in etf_normalized.columns:
-    plt.plot(etf_normalized.index, etf_normalized[ticker],
-             linestyle="--", linewidth=1.5, label=f"{ticker} ETF (Z-Score)")
+# Plot smoothed sentiment
+plt.plot(rolling_sentiment.index, rolling_sentiment,
+         label="Reddit Sentiment (7d Avg, Z-Score)", linewidth=2, color='navy')
+
+# Plot ETF normalized prices
+for ticker in etfs_normalized.columns:
+    plt.plot(etfs_normalized.index, etfs_normalized[ticker],
+             label=f"{ticker} ETF (Normalized)", linestyle='--', linewidth=1.8)
 
 plt.axhline(0, color="gray", linestyle="--", linewidth=1)
-plt.title("Reddit Sentiment vs Bond ETF Performance (Normalized)", fontsize=16)
+plt.title("Normalized Reddit Sentiment vs Bond ETF Prices", fontsize=16)
 plt.xlabel("Date")
-plt.ylabel("Z-Score / Sentiment")
+plt.ylabel("Z-Score Normalized Value")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("reddit/visualizations/reddit_sentiment_vs_etfs.png")
+plt.savefig("reddit/visualizations/reddit_sentiment_vs_etfs_normalized.png")
